@@ -36,20 +36,31 @@
 
 
                     {{-- ========================================== --}}
-                    {{-- INPUT TERSEMBUNYI SESUAI MODE YANG DIPILIH --}}
+                    {{-- INPUT TERSEMBUNYI & BANNER INFORMASI --}}
                     {{-- ========================================== --}}
 
                     {{-- JIKA MODE TAMBAH ANAK --}}
                     @if(isset($parent))
                     <input type="hidden" name="parent_id" value="{{ $parent->id }}">
+
+                    {{-- Banner Biru Info Tambah Anak --}}
+                    <div class="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md shadow-sm">
+                        <p class="text-blue-800 text-sm font-semibold flex items-center">
+                            <span class="text-xl mr-2">👶</span>
+                            Menambahkan Anak untuk: <span class="text-lg ml-2 font-black">{{ $parent->name }}</span>
+                        </p>
+                        <p class="text-blue-700 text-xs mt-1 ml-7">
+                            Posisi anak ini akan berada tepat di bawah garis keturunan {{ $parent->name }}.
+                        </p>
+                    </div>
                     @endif
 
                     {{-- JIKA MODE TAMBAH ORANG TUA --}}
                     @if(isset($child))
                     <input type="hidden" name="child_id" value="{{ $child->id }}">
 
-                    {{-- Banner Peringatan Info --}}
-                    <div class="mb-6 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-md">
+                    {{-- Banner Kuning Info Tambah Orang Tua --}}
+                    <div class="mb-6 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-md shadow-sm">
                         <p class="text-amber-800 text-sm font-semibold flex items-center">
                             <span class="text-xl mr-2">👴</span>
                             Menambahkan Orang Tua (Leluhur) untuk: <span class="text-lg ml-2 font-black">{{ $child->name
@@ -84,7 +95,8 @@
                     @if(isset($parent))
                     @if($parent->spouses->count() > 1)
                     <div class="mb-4">
-                        <label class="block font-medium text-sm text-gray-700">Anak dari Pasangan</label>
+                        <label class="block font-medium text-sm text-gray-700">Pilih Pasangan (Ibu/Bapak dari anak
+                            ini)</label>
                         <select name="spouse_id"
                             class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm block mt-1 w-full"
                             required>
@@ -95,10 +107,11 @@
                             </option>
                             @endforeach
                         </select>
-                        <p class="text-xs text-gray-400 mt-1">Pilih pasangan karena orang tua memiliki lebih dari satu
-                            riwayat pasangan.</p>
+                        <p class="text-xs text-gray-500 mt-1">Pilih pasangan karena {{ $parent->name }} memiliki lebih
+                            dari satu riwayat pasangan.</p>
                     </div>
                     @elseif($parent->spouses->count() === 1)
+                    {{-- Jika pasangannya cuma satu, otomatis pilih pasangan tersebut tanpa perlu dropdown --}}
                     <input type="hidden" name="spouse_id" value="{{ $parent->spouses->first()->id }}">
                     @endif
                     @endif

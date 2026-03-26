@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\Family;
 use App\Models\Person;
-use App\Models\Spouse;
 use Illuminate\Database\Seeder;
 
 class FamilyTreeSeeder extends Seeder
@@ -17,57 +16,90 @@ class FamilyTreeSeeder extends Seeder
             'description' => 'Silsilah keturunan dari Bapak Mashudi',
         ]);
 
-        // 2. Buat Leluhur Pertama (Generasi 1) - Tanpa parent_id
+        // ==================================================
+        // GENERASI 1 (LELUHUR)
+        // ==================================================
+
+        // Buat Kakek (Bapak Mashudi)
         $kakek = Person::create([
             'family_id' => $keluarga->id,
             'name' => 'Mashudi',
             'gender' => 'L',
         ]);
-        // Pasangan Leluhur
-        Spouse::create([
-            'person_id' => $kakek->id,
+
+        // Buat Nenek (Istri Mashudi)
+        $nenek = Person::create([
+            'family_id' => $keluarga->id,
             'name' => 'Aminah',
             'gender' => 'P',
         ]);
 
-        // 3. Buat Anak-anak (Generasi 2) - parent_id adalah $kakek->id
+        // Ikat Pernikahan Mereka (Bi-directional)
+        $kakek->spouses()->attach($nenek->id);
+        $nenek->spouses()->attach($kakek->id);
+
+        // ==================================================
+        // GENERASI 2 (ANAK-ANAK)
+        // ==================================================
+
+        // Anak 1: Budi Santoso (L)
         $anak1 = Person::create([
             'family_id' => $keluarga->id,
-            'parent_id' => $kakek->id,
+            'father_id' => $kakek->id, // Ayahnya Mashudi
+            'mother_id' => $nenek->id, // Ibunya Aminah
             'name' => 'Budi Santoso',
             'gender' => 'L',
         ]);
-        Spouse::create([
-            'person_id' => $anak1->id,
+
+        // Istri Budi
+        $istriBudi = Person::create([
+            'family_id' => $keluarga->id,
             'name' => 'Siti',
             'gender' => 'P',
         ]);
 
+        // Ikat Pernikahan Budi & Siti
+        $anak1->spouses()->attach($istriBudi->id);
+        $istriBudi->spouses()->attach($anak1->id);
+
+        // Anak 2: Rina (P)
         $anak2 = Person::create([
             'family_id' => $keluarga->id,
-            'parent_id' => $kakek->id,
+            'father_id' => $kakek->id, // Ayahnya Mashudi
+            'mother_id' => $nenek->id, // Ibunya Aminah
             'name' => 'Rina',
             'gender' => 'P',
         ]);
-        Spouse::create([
-            'person_id' => $anak2->id,
+
+        // Suami Rina
+        $suamiRina = Person::create([
+            'family_id' => $keluarga->id,
             'name' => 'Andi',
             'gender' => 'L',
         ]);
 
-        // 4. Buat Cucu (Generasi 3)
-        // Cucu dari Anak 1
+        // Ikat Pernikahan Rina & Andi
+        $anak2->spouses()->attach($suamiRina->id);
+        $suamiRina->spouses()->attach($anak2->id);
+
+        // ==================================================
+        // GENERASI 3 (CUCU-CUCU)
+        // ==================================================
+
+        // Cucu 1: Doni (Anak dari Budi & Siti)
         Person::create([
             'family_id' => $keluarga->id,
-            'parent_id' => $anak1->id,
+            'father_id' => $anak1->id,    // Ayahnya Budi
+            'mother_id' => $istriBudi->id, // Ibunya Siti
             'name' => 'Doni',
             'gender' => 'L',
         ]);
 
-        // Cucu dari Anak 2
+        // Cucu 2: Maya (Anak dari Andi & Rina)
         Person::create([
             'family_id' => $keluarga->id,
-            'parent_id' => $anak2->id,
+            'father_id' => $suamiRina->id, // Ayahnya Andi
+            'mother_id' => $anak2->id,     // Ibunya Rina
             'name' => 'Maya',
             'gender' => 'P',
         ]);

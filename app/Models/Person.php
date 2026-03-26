@@ -7,35 +7,35 @@ use Illuminate\Database\Eloquent\Model;
 class Person extends Model
 {
     protected $fillable = [
-        'family_id', 'parent_id', 'name', 'gender', 'photo_path', 'address', 'phone', 'spouse_id',
+        'family_id', 'father_id', 'mother_id', 'name',
+        'gender', 'phone', 'address', 'photo_path',
     ];
 
-    // Ke keluarga besar
     public function family()
     {
         return $this->belongsTo(Family::class);
     }
 
-    // Ke orang tua (1 garis keturunan di atasnya)
-    public function parent()
+    public function father()
     {
-        return $this->belongsTo(Person::class, 'parent_id');
+        return $this->belongsTo(Person::class, 'father_id');
     }
 
-    // Ke anak-anak
+    public function mother()
+    {
+        return $this->belongsTo(Person::class, 'mother_id');
+    }
+
+    // Mengambil semua anak (di mana dia jadi bapak ATAU ibu)
     public function children()
     {
-        return $this->hasMany(Person::class, 'parent_id');
+        return Person::where('father_id', $this->id)
+            ->orWhere('mother_id', $this->id)->get();
     }
 
-    // Ke pasangan (hasMany jika mungkin menikah lebih dari 1 kali)
+    // Mengambil semua pasangan (Suami/Istri) melalui tabel marriages
     public function spouses()
     {
-        return $this->hasMany(Spouse::class);
-    }
-
-    public function parentSpouse()
-    {
-        return $this->belongsTo(Spouse::class, 'spouse_id');
+        return $this->belongsToMany(Person::class, 'marriages', 'person_id', 'spouse_id');
     }
 }

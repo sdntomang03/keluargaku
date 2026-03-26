@@ -4,14 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Family;
 use App\Models\Person;
-use App\Models\Spouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class PersonController extends Controller
 {
-    // Mengecek apakah user berhak mengedit keluarga ini
     private function checkAccess($family_id)
     {
         $user = Auth::user();
@@ -21,7 +19,7 @@ class PersonController extends Controller
     }
 
     // ==================================================
-    // 1. CRUD KETURUNAN (PERSON)
+    // 1. CRUD UTAMA (LELUHUR, ANAK, DAN ORANG TUA)
     // ==================================================
 
     public function create(Request $request, Family $family)
@@ -29,12 +27,11 @@ class PersonController extends Controller
         $this->checkAccess($family->id);
 
         $parentId = $request->query('parent_id');
-        $childId = $request->query('child_id'); // <-- BARU: Tangkap id anak
+        $childId = $request->query('child_id');
 
         $parent = $parentId ? Person::with('spouses')->find($parentId) : null;
-        $child = $childId ? Person::find($childId) : null; // <-- BARU: Cari data anak
+        $child = $childId ? Person::find($childId) : null;
 
-        // Pastikan variabel $child ikut dikirim ke view (compact)
         return view('person.create', compact('family', 'parent', 'child'));
     }
 
@@ -46,44 +43,117 @@ class PersonController extends Controller
             'name' => 'required|string|max:255',
             'gender' => 'required|in:L,P',
             'parent_id' => 'nullable|exists:people,id',
-            'child_id' => 'nullable|exists:people,id', // <-- BARU: Tambahkan ini di validasi
-            'spouse_id' => 'nullable|exists:spouses,id',
+            'child_id' => 'nullable|exists:people,id',
+            'spouse_id' => 'nullable|exists:people,id', // Diambil dari people, bukan tabel spouses lagi
             'address' => 'nullable|string',
             'phone' => 'nullable|string|max:20',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:5120',
         ]);
 
-        // ... (Logika upload foto biarkan sama persis seperti sebelumnya) ...
         $photoPath = null;
         if ($request->hasFile('photo')) {
             $photoPath = $request->file('photo')->store('photos/people', 'public');
         }
 
-        // Buat data orang tuanya
+        // -----------------------------------------------------
+        // LOGIKA CERDAS: MENENTUKAN FATHER_ID DAN MOTHER_ID
+        // -----------------------------------------------------
+        $father_id = null;
+        $mother_id = null;
+
+        if (! empty($validated['parent_id'])) {
+            $parent = Person::find($validated['parent_id']);
+
+            // Jika orang tuanya Laki-laki, dia jadi Bapak. Pasangannya jadi Ibu.
+            if ($parent->gender === 'L') {
+                $father_id = $parent->id;
+                $mother_id = $validated['spouse_id'] ?? null;
+            }
+            // Jika orang tuanya Perempuan, dia jadi Ibu. Pasangannya jadi Bapak.
+            else {
+                $mother_id = $parent->id;
+                $father_id = $validated['spouse_id'] ?? null;
+            }
+        }
+
+        // Eksekusi Pembuatan Data
         $person = Person::create([
             'family_id' => $family->id,
-            'parent_id' => $validated['parent_id'] ?? null,
-            'spouse_id' => $validated['spouse_id'] ?? null,
+            'father_id' => $father_id,
+            'mother_id' => $mother_id,
             'name' => $validated['name'],
             'gender' => $validated['gender'],
-            'address' => $validated['address'],
-            'phone' => $validated['phone'],
+            'address' => $validated['address'] ?? null,
+            'phone' => $validated['phone'] ?? null,
             'photo_path' => $photoPath,
         ]);
 
-        // ===============================================================
-        // BARU: Jika ini adalah proses Tambah Orang Tua, sambungkan anaknya!
-        // ===============================================================
+        // -----------------------------------------------------
+        // LOGIKA REVERSE: JIKA SEDANG MENAMBAH ORANG TUA (KE ATAS)
+        // -----------------------------------------------------
         if (! empty($validated['child_id'])) {
             $child = Person::find($validated['child_id']);
             if ($child) {
-                // Update anak (Mashudi) agar parent_id-nya merujuk ke orang tua yang baru dibuat
-                $child->update(['parent_id' => $person->id]);
+                // Jika yang dibuat Laki-laki, masukkan sbg Ayah. Jika Perempuan, sbg Ibu.
+                if ($person->gender === 'L') {
+                    $child->update(['father_id' => $person->id]);
+                } else {
+                    $child->update(['mother_id' => $person->id]);
+                }
             }
         }
 
         return redirect()->route('family.tree', $family->id)->with('success', 'Data berhasil ditambahkan!');
     }
+
+    // ==================================================
+    // 2. FUNGSI KHUSUS: TAMBAH PASANGAN (BUKU NIKAH)
+    // ==================================================
+
+    public function createSpouse(Family $family, Person $person)
+    {
+        $this->checkAccess($family->id);
+
+        return view('person.create_spouse', compact('family', 'person'));
+    }
+
+    public function storeSpouse(Request $request, Family $family, Person $person)
+    {
+        $this->checkAccess($family->id);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'gender' => 'required|in:L,P',
+            'address' => 'nullable|string',
+            'phone' => 'nullable|string|max:20',
+            'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:5120',
+        ]);
+
+        $photoPath = null;
+        if ($request->hasFile('photo')) {
+            $photoPath = $request->file('photo')->store('photos/people', 'public');
+        }
+
+        // 1. Buat data pasangannya sebagai Person biasa
+        $spouse = Person::create([
+            'family_id' => $family->id,
+            'name' => $validated['name'],
+            'gender' => $validated['gender'],
+            'address' => $validated['address'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'photo_path' => $photoPath,
+        ]);
+
+        // 2. Ikat mereka dalam pernikahan (Tabel Marriages Bi-Directional)
+        $person->spouses()->attach($spouse->id);
+        $spouse->spouses()->attach($person->id); // Ikat balik agar terbaca dari kedua sisi
+
+        return redirect()->route('family.tree', $family->id)->with('success', 'Pasangan berhasil ditambahkan!');
+    }
+
+    // ==================================================
+    // 3. EDIT, UPDATE, & DELETE GLOBAL (UNTUK SEMUA ORANG)
+    // ==================================================
 
     public function edit(Family $family, Person $person)
     {
@@ -101,7 +171,7 @@ class PersonController extends Controller
             'gender' => 'required|in:L,P',
             'address' => 'nullable|string',
             'phone' => 'nullable|string|max:20',
-            'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:5120',
         ]);
 
         if ($request->hasFile('photo')) {
@@ -120,97 +190,17 @@ class PersonController extends Controller
     {
         $this->checkAccess($family->id);
 
-        // 1. Hapus foto orang yang bersangkutan
+        // Hapus foto dari storage
         if ($person->photo_path && Storage::disk('public')->exists($person->photo_path)) {
             Storage::disk('public')->delete($person->photo_path);
         }
 
-        // 2. Jika Anda ingin anak-anaknya ikut terhapus (Cascade Manual),
-        //    tapi karena di migration Anda pakai nullOnDelete, maka baris ini opsional:
-        $person->children()->delete();
-
-        // 3. Eksekusi hapus
+        // Hapus data orangnya.
+        // Relasi pernikahan (marriages) dan id orang tua di anak-anak (father_id/mother_id)
+        // otomatis diurus oleh cascadeOnDelete dan nullOnDelete di Migration!
         $person->delete();
 
         return redirect()->route('family.tree', $family->id)
-            ->with('success', 'Anggota keluarga berhasil dihapus!');
-    }
-
-    // ==================================================
-    // 2. CRUD PASANGAN (SPOUSE)
-    // ==================================================
-
-    public function createSpouse(Family $family, Person $person)
-    {
-        $this->checkAccess($family->id);
-
-        return view('person.create_spouse', compact('family', 'person'));
-    }
-
-    public function storeSpouse(Request $request, Family $family, Person $person)
-    {
-        $this->checkAccess($family->id);
-
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'gender' => 'required|in:L,P',
-            'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-        ]);
-
-        $photoPath = null;
-        if ($request->hasFile('photo')) {
-            $photoPath = $request->file('photo')->store('photos/spouses', 'public');
-        }
-
-        Spouse::create([
-            'person_id' => $person->id,
-            'name' => $validated['name'],
-            'gender' => $validated['gender'],
-            'photo_path' => $photoPath,
-        ]);
-
-        return redirect()->route('family.tree', $family->id)->with('success', 'Pasangan berhasil ditambahkan!');
-    }
-
-    public function editSpouse(Family $family, Person $person, Spouse $spouse)
-    {
-        $this->checkAccess($family->id);
-
-        return view('person.edit_spouse', compact('family', 'person', 'spouse'));
-    }
-
-    public function updateSpouse(Request $request, Family $family, Person $person, Spouse $spouse)
-    {
-        $this->checkAccess($family->id);
-
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'gender' => 'required|in:L,P',
-            'photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-        ]);
-
-        if ($request->hasFile('photo')) {
-            if ($spouse->photo_path && Storage::disk('public')->exists($spouse->photo_path)) {
-                Storage::disk('public')->delete($spouse->photo_path);
-            }
-            $validated['photo_path'] = $request->file('photo')->store('photos/spouses', 'public');
-        }
-
-        $spouse->update($validated);
-
-        return redirect()->route('family.tree', $family->id)->with('success', 'Data pasangan berhasil diperbarui!');
-    }
-
-    public function destroySpouse(Family $family, Person $person, Spouse $spouse)
-    {
-        $this->checkAccess($family->id);
-
-        if ($spouse->photo_path && Storage::disk('public')->exists($spouse->photo_path)) {
-            Storage::disk('public')->delete($spouse->photo_path);
-        }
-
-        $spouse->delete();
-
-        return redirect()->route('family.tree', $family->id)->with('success', 'Data pasangan berhasil dihapus!');
+            ->with('success', 'Data berhasil dihapus dari silsilah!');
     }
 }

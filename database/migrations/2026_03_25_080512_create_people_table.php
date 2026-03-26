@@ -12,17 +12,16 @@ return new class extends Migration
         Schema::create('people', function (Blueprint $table) {
             $table->id();
             $table->foreignId('family_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('parent_id')->nullable()->constrained('people')->nullOnDelete();
 
-            // Buat kolom spouse_id (tanpa constrained)
-            $table->unsignedBigInteger('spouse_id')->nullable();
+            // GANTI parent_id MENJADI father_id dan mother_id
+            $table->foreignId('father_id')->nullable()->constrained('people')->nullOnDelete();
+            $table->foreignId('mother_id')->nullable()->constrained('people')->nullOnDelete();
 
             $table->string('name');
             $table->enum('gender', ['L', 'P']);
-            $table->string('photo_path')->nullable();
+            $table->string('phone')->nullable();
             $table->text('address')->nullable();
-            $table->string('phone', 20)->nullable();
-
+            $table->string('photo_path')->nullable();
             $table->timestamps();
         });
     }

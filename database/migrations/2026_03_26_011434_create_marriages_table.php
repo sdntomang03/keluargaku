@@ -11,14 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('spouses', function (Blueprint $table) {
+        Schema::create('marriages', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('person_id')->constrained('people')->cascadeOnDelete(); // Milik siapa pasangan ini?
-
-            $table->string('name');
-            $table->enum('gender', ['L', 'P']); // Biasanya kebalikan dari person_id
-            $table->string('photo_path')->nullable(); // Foto pasangan
-
+            // person_id dan spouse_id merujuk ke tabel people
+            $table->foreignId('person_id')->constrained('people')->cascadeOnDelete();
+            $table->foreignId('spouse_id')->constrained('people')->cascadeOnDelete();
             $table->timestamps();
         });
     }
@@ -28,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('spouses');
+        Schema::dropIfExists('marriages');
     }
 };

@@ -6,17 +6,13 @@
             </h2>
 
             <div class="flex flex-wrap items-center gap-3">
-                {{-- ========================================== --}}
-                {{-- DROPDOWN FILTER KETURUNAN YANG ASLI --}}
-                {{-- ========================================== --}}
+                {{-- DROPDOWN FILTER KETURUNAN --}}
                 <div class="relative">
                     <select id="filter-node"
                         class="bg-white border border-slate-300 text-slate-700 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block w-full py-2 px-4 shadow-sm font-semibold cursor-pointer">
                         <option value="all">🌍 Tampilkan Semua Keturunan</option>
-                        {{-- Opsi nama akan diisi otomatis oleh JS --}}
                     </select>
                 </div>
-                {{-- ========================================== --}}
 
                 <a href="{{ route('person.create', $family->id) }}"
                     class="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-lg whitespace-nowrap">
@@ -51,20 +47,19 @@
     </div>
     <script>
         setTimeout(function() {
-                const toast = document.getElementById('toast-success');
-                if (toast) {
-                    toast.style.opacity = '0';
-                    toast.style.transform = 'translateX(100%)';
-                    setTimeout(() => toast.remove(), 500);
-                }
-            }, 4000);
+            const toast = document.getElementById('toast-success');
+            if (toast) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 500);
+            }
+        }, 4000);
     </script>
     @endif
 
     <div class="py-8 bg-slate-100 min-h-screen">
         <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
             <div class="bg-white border border-slate-300 shadow-xl rounded-2xl p-4 relative">
-                {{-- BUNGKUSAN KANVAS UNTUK DIHANCURKAN SAAT FILTER --}}
                 <div id="tree-wrapper">
                     <div id="tree" style="width: 100%; height: 75vh;"></div>
                 </div>
@@ -81,6 +76,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Data sudah mencakup relasi father_id, mother_id, dan spouses dari Model yang baru
             const rawPeople = @json($people);
             const familyId = "{{ $family->id }}";
 
@@ -94,16 +90,20 @@
             let nodeMap = {};
 
             // ------------------------------------------
-            // 1. MAPPING DATA UTAMA
+            // 1. MAPPING DATA UTAMA (SUPER BERSIH)
             // ------------------------------------------
             rawPeople.forEach(person => {
-                let pId = "p_" + person.id;
+                // Ekstrak ID pasangan dari relasi spouses (marriages)
+                let spouseIds = [];
+                if (person.spouses && person.spouses.length > 0) {
+                    spouseIds = person.spouses.map(s => s.id);
+                }
 
                 let personNode = {
-                    id: pId,
-                    real_id: person.id,
-                    main_id: person.id,
-                    is_spouse: false,
+                    id: person.id,                 // ID Asli database (Tidak perlu p_)
+                    fid: person.father_id,         // Ambil langsung dari tabel
+                    mid: person.mother_id,         // Ambil langsung dari tabel
+                    pids: spouseIds,               // Array ID pasangan
                     name: person.name,
                     gender: person.gender === 'L' ? 'male' : 'female',
                     img: person.photo_path
@@ -111,47 +111,17 @@
                          : `https://ui-avatars.com/api/?name=${encodeURIComponent(person.name)}&background=0D8ABC&color=fff`
                 };
 
-                if (person.parent_id) {
-                    personNode.fid = "p_" + person.parent_id;
-                    if (person.spouse_id) personNode.mid = "s_" + person.spouse_id;
-                }
-
-                if (person.spouses && person.spouses.length > 0) {
-                    let pidsArray = [];
-                    person.spouses.forEach(spouse => {
-                        let sId = "s_" + spouse.id;
-                        pidsArray.push(sId);
-
-                        let spouseNode = {
-                            id: sId,
-                            real_id: spouse.id,
-                            main_id: person.id,
-                            is_spouse: true,
-                            name: spouse.name,
-                            gender: spouse.gender === 'L' ? 'male' : 'female',
-                            img: spouse.photo_path
-                                 ? "{{ url('storage') }}/" + spouse.photo_path
-                                 : `https://ui-avatars.com/api/?name=${encodeURIComponent(spouse.name)}&background=0D8ABC&color=fff`,
-                            pids: [pId]
-                        };
-                        familyData.push(spouseNode);
-                        nodeMap[sId] = spouseNode;
-                    });
-                    personNode.pids = pidsArray;
-                }
                 familyData.push(personNode);
-                nodeMap[pId] = personNode;
+                nodeMap[person.id] = personNode;
             });
 
 
             // ------------------------------------------
-            // 2. FUNGSI RENDER ULANG KANVAS (ANTI GHOST-LINE)
+            // 2. FUNGSI RENDER ULANG KANVAS
             // ------------------------------------------
             function renderTree(dataToRender) {
-                // HANCURKAN KANVAS LAMA SAMPAI AKAR-AKARNYA
                 document.getElementById('tree-wrapper').innerHTML = '<div id="tree" style="width: 100%; height: 75vh;"></div>';
 
-                // BUAT DIAGRAM BARU DI KANVAS YANG BERSIH
                 let chart = new FamilyTree(document.getElementById("tree"), {
                     template: "tommy",
                     orientation: FamilyTree.orientation.top,
@@ -159,7 +129,6 @@
                     mouseScrol: FamilyTree.action.zoom,
                     nodeBinding: {
                         field_0: "name",
-                        field_1: "title",
                         img_0: "img"
                     },
                     editForm: { readOnly: true },
@@ -173,39 +142,29 @@
 
                     nodeMenu: {
                         add_parent: {
-        text: "👴 Tambah Orang Tua",
-        onClick: function(nodeId) {
-            let node = nodeMap[nodeId];
-            if (node.is_spouse) {
-                alert("Harap klik anggota keluarga inti (bukan pasangan) untuk menambah leluhur.");
-                return;
-            }
-            window.location.href = `/family/${familyId}/person/create?child_id=${node.main_id}`;
-        }
-    },
+                            text: "👴 Tambah Orang Tua",
+                            onClick: function(nodeId) {
+                                // Karena semua adalah Person, tidak ada lagi error blokir klik pasangan
+                                window.location.href = `/family/${familyId}/person/create?child_id=${nodeId}`;
+                            }
+                        },
                         add_child: {
                             text: "👶 Tambah Anak",
                             onClick: function(nodeId) {
-                                let node = nodeMap[nodeId];
-                                window.location.href = `/family/${familyId}/person/create?parent_id=${node.main_id}`;
+                                window.location.href = `/family/${familyId}/person/create?parent_id=${nodeId}`;
                             }
                         },
                         add_spouse: {
                             text: "💍 Tambah Pasangan",
                             onClick: function(nodeId) {
-                                let node = nodeMap[nodeId];
-                                window.location.href = `/family/${familyId}/person/${node.main_id}/spouse/create`;
+                                window.location.href = `/family/${familyId}/person/${nodeId}/spouse/create`;
                             }
                         },
                         edit_data: {
                             text: "✏️ Edit Data",
                             onClick: function(nodeId) {
-                                let node = nodeMap[nodeId];
-                                if (node.is_spouse) {
-                                    window.location.href = `/family/${familyId}/person/${node.main_id}/spouse/${node.real_id}/edit`;
-                                } else {
-                                    window.location.href = `/family/${familyId}/person/${node.real_id}/edit`;
-                                }
+                                // Sangat bersih, satu route edit untuk semua orang
+                                window.location.href = `/family/${familyId}/person/${nodeId}/edit`;
                             }
                         },
                         remove_data: {
@@ -214,9 +173,8 @@
                                 let node = nodeMap[nodeId];
                                 if (confirm(`Yakin ingin menghapus ${node.name}?`)) {
                                     const form = document.getElementById('action-form');
-                                    form.action = node.is_spouse
-                                        ? `/family/${familyId}/person/${node.main_id}/spouse/${node.real_id}`
-                                        : `/family/${familyId}/person/${node.real_id}`;
+                                    // Sangat bersih, satu route delete untuk semua orang
+                                    form.action = `/family/${familyId}/person/${nodeId}`;
                                     form.submit();
                                 }
                             }
@@ -225,12 +183,9 @@
                 });
 
                 chart.on('click', function (sender, args) {
-                    let node = nodeMap[args.node.id];
-                    if (node) {
-                        let url = node.is_spouse
-                            ? `/family/${familyId}/person/${node.main_id}/spouse/${node.real_id}/edit`
-                            : `/family/${familyId}/person/${node.real_id}/edit`;
-                        window.location.href = url;
+                    let nodeId = args.node.id;
+                    if (nodeMap[nodeId]) {
+                        window.location.href = `/family/${familyId}/person/${nodeId}/edit`;
                     }
                     return false;
                 });
@@ -240,24 +195,24 @@
 
 
             // ------------------------------------------
-            // 3. LOGIKA FILTER KETURUNAN (DROPDOWN)
+            // 3. LOGIKA FILTER KETURUNAN
             // ------------------------------------------
             const filterSelect = document.getElementById('filter-node');
 
-            // Masukkan daftar nama ke dalam Dropdown
+            // Masukkan daftar nama ke Dropdown (Tidak perlu difilter is_spouse)
             rawPeople.forEach(person => {
                 let option = document.createElement('option');
-                option.value = "p_" + person.id;
+                option.value = person.id;
                 option.text = "🌿 " + person.name;
                 filterSelect.appendChild(option);
             });
 
-            // Saat Dropdown diubah nilainya
             filterSelect.addEventListener('change', function() {
-                const selectedId = this.value;
+                // Pastikan yang diambil adalah integer karena ID dari db sekarang angka murni
+                const selectedId = this.value === 'all' ? 'all' : parseInt(this.value);
 
                 if (selectedId === 'all') {
-                    renderTree(familyData); // Tampilkan utuh
+                    renderTree(familyData);
                     return;
                 }
 
@@ -272,7 +227,7 @@
                     }
                 });
 
-                // Tarik anak-cucu ke bawah
+                // Tarik keturunan
                 while(queue.length > 0) {
                     let currentId = queue.shift();
 
@@ -282,7 +237,7 @@
                                 resultIds.add(node.id);
                                 queue.push(node.id);
 
-                                // Tarik pasangan dari anak-cucu
+                                // Tarik pasangan keturunan
                                 familyData.forEach(s => {
                                     if (s.pids && s.pids.includes(node.id)) resultIds.add(s.id);
                                 });
@@ -291,13 +246,12 @@
                     });
                 }
 
-                // Filter data bersih dan potong memori ikatan ke atas
                 let safeFilteredData = [];
                 familyData.forEach(node => {
                     if (resultIds.has(node.id)) {
                         let safeNode = Object.assign({}, node);
 
-                        // Potong fid & mid agar target menjadi akar pohon (root)
+                        // Potong ikatan ke atas agar tidak ada garis putus
                         if (safeNode.id === selectedId || (safeNode.pids && safeNode.pids.includes(selectedId))) {
                             delete safeNode.fid;
                             delete safeNode.mid;
@@ -306,12 +260,11 @@
                     }
                 });
 
-                // Eksekusi ulang pembuatan diagram!
                 renderTree(safeFilteredData);
             });
 
             // ==========================================
-            // RENDER PERTAMA KALI HALAMAN DIBUKA
+            // RENDER AWAL
             // ==========================================
             renderTree(familyData);
         });
